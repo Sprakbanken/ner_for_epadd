@@ -8,7 +8,7 @@ Lag gjerne et virtuelt miljø og installer avhengigheter slik:
 ```
 python3 -m venv venv_epadd
 . venv_epadd/bin/activate
-pip install .git 
+pip install .
 ```
 
 ## Kjøring
