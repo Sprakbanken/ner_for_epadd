@@ -2,28 +2,23 @@ from argparse import ArgumentParser
 from mailbox import mbox
 from pathlib import Path
 from transformers import pipeline
+from DictDataset import DictDataset
 from utils import (
     arglist_to_kwarg_dict,
-    get_entity_books,
-    get_content_dataset,
-    get_text_messages,
-    write_entity_books,
+    get_text_contents,
+    get_text_messages
 )
 from tqdm import tqdm
 import errno
 import os
 import logging
+import json
+import pprint
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--mbox", type=Path, help="Path to .mbox file", required=True)
-    parser.add_argument(
-        "--entity_books",
-        type=Path,
-        help="Path to entity books directory (ex: /home/<username>/epadd-appraisal/user/data/sessions/EntityBooks)",
-        required=True,
-    )
     parser.add_argument(
         "--ner_model",
         help="Model id on huggingface hub or path to local model",
@@ -34,6 +29,12 @@ if __name__ == "__main__":
         nargs="+",
         help="Key value pairs that map ner model categories to entitybook directories.",
         default=["PER=Person", "LOC=Place", "ORG=Organisation", "MISC=Other"],
+    )
+    parser.add_argument(
+        "--output",
+        help="Path to output json file",
+        type=Path,
+        required=False
     )
     parser.add_argument(
         "--threshold",
@@ -68,10 +69,6 @@ if __name__ == "__main__":
 
     if not args.mbox.exists():
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(args.mbox))
-    if not args.entity_books.exists():
-        raise FileNotFoundError(
-            errno.ENOENT, os.strerror(errno.ENOENT), str(args.entity_books)
-        )
 
     pipe = pipeline(
         "token-classification",
@@ -81,46 +78,28 @@ if __name__ == "__main__":
 
     labels = {e.split("-")[1] for e in pipe.model.config.label2id if "-" in e}
 
-    category_directory_map = arglist_to_kwarg_dict(args.cat_dir_map)
-    for e in labels:
-        try:
-            dirname = category_directory_map[e]
-        except Exception as ex:
-            logger.error(
-                f"Model label {e} does not exist in category directoy map {category_directory_map}"
-            )
-            raise ex
-
-        entity_book_dir = args.entity_books / dirname
-        if not entity_book_dir.exists():
-            logger.error(
-                f"Category directory map maps model label {e} to {dirname}, but {entity_book_dir} does not exist."
-            )
-            raise FileNotFoundError(
-                errno.ENOENT, os.strerror(errno.ENOENT), str(entity_book_dir)
-            )
-
     box = mbox(
         args.mbox,
         create=False,
     )
 
     box = mbox(args.mbox, create=False)
-    content_dataset = get_content_dataset(box)
+    msg_dict = get_text_contents(box)
+    content_dataset = DictDataset(data=msg_dict)
 
     exception_indices = []
     logger.info("Run NER on mbox text content\n")
+
     try:
-        res = [e for e in tqdm(pipe(content_dataset))]
+        res = {k:val for k, val in zip(content_dataset.keys, tqdm(pipe(content_dataset)))}
     except Exception as ex:
         logger.warning(
             f"An exception happened while running the mbox contents through the NER model.\n{ex}\nWill run NER on each mbox message individually\n"
         )
-        res = []
-        for i, e in tqdm(enumerate(content_dataset), total=len(content_dataset)):
+        res = {}
+        for k, e in tqdm(zip(content_dataset.keys, content_dataset.values), total=len(content_dataset)):
             try:
-                pipe(e)
-                res.append(e)
+                res[k] = pipe(e)
             except Exception as ex:
                 logger.debug(
                     f"When running NER on message number {i} the following exception occured:\n{ex}"
@@ -139,36 +118,21 @@ if __name__ == "__main__":
             headers = dict(msg._headers)
             logger.debug(headers)
 
-    entities = {
-        (ent["word"], ent["entity_group"])
-        for entlist in res
-        for ent in entlist
-        if ent["score"] >= args.threshold
+    filtered = {
+        msg_id:[ent for ent in entities if ent["score"] >= args.threshold]
+        for msg_id, entities in res.items()
     }
 
-    logger.info(f"Found {len(entities)} unique entities in mbox")
+    write_to_file = False
+    if args.output:
+        if os.path.exists(args.output):
+            answer = input(f"Output file {args.output} exists already, overwrite? [y/n]")
+            write_to_file = answer.lower() == "y"
+        else:
+            write_to_file = True
 
-    entity_books = get_entity_books(
-        args.entity_books, sub_dirs=category_directory_map.values()
-    )
-    prev_lens = {category: len(book) for category, book in entity_books.items()}
-
-    for name, ent_type in entities:
-        entity_books[category_directory_map[ent_type]].append(name)
-
-    for k, v in entity_books.items():
-        entity_books[k] = sorted(list(set(v)))
-
-    for category, book in entity_books.items():
-        prev_len = prev_lens[category]
-        current_len = len(book)
-        logger.debug(
-            f"Found {current_len - prev_len} new entities for category {category}"
-        )
-
-    write_entity_books(
-        entity_books=entity_books,
-        parent_dir=args.entity_books,
-    )
-
-    logger.info(f"Wrote all entities to {args.entity_books}")
+    if write_to_file:
+        with open(args.output, 'w') as outfile:
+            json.dump(filtered, outfile, default=float, ensure_ascii=False,indent=2)
+    else:
+        pprint.pp(filtered, indent = 2)

@@ -4,10 +4,9 @@ import quopri
 import email
 from mailbox import mbox
 from pathlib import Path
-from ListDataset import ListDataset
 
 
-def get_text_content(part: email.message.Message):
+def get_text_content(part: email.message.Message) -> str:
     content = part._payload
     headers = dict(part._headers)
     if "charset" in headers["Content-Type"]:
@@ -29,46 +28,23 @@ def get_text_content(part: email.message.Message):
     return content
 
 
-def get_text_messages(box: mbox) -> list[email.message.Message]:
-    messages = []
+def get_text_messages(box: mbox) -> dict[str, email.message.Message]:
+    # TODO: This only works is there is no more than 1 text/plain part per message-id...
+    messages = {}
     for msg in box:
+        msg_id = msg["message-id"].strip()
         if msg.is_multipart():
             for part in msg.walk():
                 if part.get_content_type() == "text/plain":
-                    messages.append(part)
+                    messages[msg_id] = part
         else:
             if msg.get_content_type() == "text/plain":
-                messages.append(msg)
+                messages[msg_id] = msg
     return messages
 
 
-def get_text_contents(box: mbox) -> list[str]:
-    return [get_text_content(e) for e in get_text_messages(box)]
-
-
-def get_content_dataset(box: mbox) -> ListDataset:
-    return ListDataset(data=get_text_contents(box))
-
-
-def get_entity_books(parent_dir: Path, sub_dirs: list[str]) -> dict[str, list[str]]:
-    entity_books = {}
-    for e in sub_dirs:
-        entity_book = parent_dir / e / "EntityBook"
-        if entity_book.exists():
-            entity_books[e] = [
-                x.strip() for x in entity_book.read_text().split("\n--") if x.strip()
-            ]
-        else:
-            entity_books[e] = []
-    return entity_books
-
-
-def write_entity_books(entity_books: dict[str, list[str]], parent_dir: Path):
-    for k, v in entity_books.items():
-        entity_book_file = parent_dir / k / "EntityBook"
-        with entity_book_file.open("w+") as f:
-            f.write("\n--\n".join(v))
-            f.write("\n--")
+def get_text_contents(box: mbox) -> dict[str, str]:
+    return {k:get_text_content(msg) for k, msg in get_text_messages(box).items()}
 
 
 def str_to_type(str_: str) -> str | float | bool:
