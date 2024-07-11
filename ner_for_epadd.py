@@ -118,10 +118,12 @@ if __name__ == "__main__":
             headers = dict(msg._headers)
             logger.debug(headers)
 
-    filtered = {
-        msg_id:[ent for ent in entities if ent["score"] >= args.threshold]
-        for msg_id, entities in res.items()
-    }
+    filtered = []
+    for k, e in res.items():
+        filtered.append({
+            'message-id': k,
+            'entities': [ent for ent in e if ent["score"] >= args.threshold]
+        })
 
     write_to_file = False
     if args.output:
