@@ -100,7 +100,7 @@ if __name__ == "__main__":
                 res[k] = pipe(e)
             except Exception as ex:
                 logger.debug(
-                    f"When running NER on message number {k} the following exception occured:\n{ex}"
+                    f"When running NER on message with id {k} the following exception occured:\n{ex}"
                 )
                 exception_indices.append(k)
 
