@@ -3,17 +3,32 @@ from mailbox import mbox
 from pathlib import Path
 from transformers import pipeline
 from DictDataset import DictDataset
-from utils import (
-    arglist_to_kwarg_dict,
-    get_text_contents,
-    get_text_messages
-)
+from utils import get_text_contents, get_text_messages
 from tqdm import tqdm
 import errno
 import os
 import logging
 import json
 import pprint
+
+
+def setup_logging(debug: bool) -> logging.Logger:
+    logger = logging.getLogger()
+    ch = logging.StreamHandler()
+
+    if debug:
+        logger.setLevel(logging.DEBUG)
+        ch.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+        ch.setLevel(logging.INFO)
+
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
 
 
 if __name__ == "__main__":
@@ -25,16 +40,7 @@ if __name__ == "__main__":
         default="saattrupdan/nbailab-base-ner-scandi",
     )
     parser.add_argument(
-        "--cat_dir_map",
-        nargs="+",
-        help="Key value pairs that map ner model categories to entitybook directories.",
-        default=["PER=Person", "LOC=Place", "ORG=Organisation", "MISC=Other"],
-    )
-    parser.add_argument(
-        "--output",
-        help="Path to output json file",
-        type=Path,
-        required=False
+        "--output", help="Path to output json file", type=Path, required=False
     )
     parser.add_argument(
         "--threshold",
@@ -51,21 +57,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    logger = logging.getLogger()
-    ch = logging.StreamHandler()
-
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-        ch.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-        ch.setLevel(logging.INFO)
-
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
+    logger = setup_logging(args.debug)
 
     if not args.mbox.exists():
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(args.mbox))
@@ -76,6 +68,7 @@ if __name__ == "__main__":
         aggregation_strategy="first",
     )
 
+    # Get sub-labels if they exist
     labels = {e.split("-")[1] for e in pipe.model.config.label2id if "-" in e}
 
     box = mbox(
@@ -91,20 +84,25 @@ if __name__ == "__main__":
     logger.info("Run NER on mbox text content\n")
 
     try:
-        res = {k:val for k, val in zip(content_dataset.keys, tqdm(pipe(content_dataset)))}
+        res = {
+            k: val for k, val in zip(content_dataset.keys, tqdm(pipe(content_dataset)))
+        }
     except Exception as ex:
         logger.warning(
             f"An exception happened while running the mbox contents through the NER model.\n{ex}\nWill run NER on each mbox message individually\n"
         )
         res = {}
-        for k, e in tqdm(zip(content_dataset.keys, content_dataset.values), total=len(content_dataset)):
+        for k, e in tqdm(
+            zip(content_dataset.keys, content_dataset.values),
+            total=len(content_dataset),
+        ):
             try:
                 res[k] = pipe(e)
             except Exception as ex:
                 logger.debug(
-                    f"When running NER on message number {i} the following exception occured:\n{ex}"
+                    f"When running NER on message with id {k} the following exception occured:\n{ex}"
                 )
-                exception_indices.append(i)
+                exception_indices.append(k)
 
     if exception_indices:
         logger.info(f"Number of messages where NER failed: {len(exception_indices)}")
@@ -120,21 +118,20 @@ if __name__ == "__main__":
 
     filtered = []
     for k, e in res.items():
-        filtered.append({
-            'message-id': k,
-            'entities': [ent for ent in e if ent["score"] >= args.threshold]
-        })
+        filtered.append(
+            {
+                "message-id": k,
+                "entities": [ent for ent in e if ent["score"] >= args.threshold],
+            }
+        )
 
-    write_to_file = False
-    if args.output:
-        if os.path.exists(args.output):
-            answer = input(f"Output file {args.output} exists already, overwrite? [y/n]")
-            write_to_file = answer.lower() == "y"
-        else:
-            write_to_file = True
+    write_to_file = bool(args.output)
+    if write_to_file and args.output.exists():
+        answer = input(f"Output file {args.output} exists already, overwrite? [y/n]")
+        write_to_file = answer.lower() == "y"
 
     if write_to_file:
-        with open(args.output, 'w') as outfile:
-            json.dump(filtered, outfile, default=float, ensure_ascii=False,indent=2)
+        with open(args.output, "w+") as outfile:
+            json.dump(filtered, outfile, default=float, ensure_ascii=False, indent=2)
     else:
-        pprint.pp(filtered, indent = 2)
+        pprint.pp(filtered, indent=2)

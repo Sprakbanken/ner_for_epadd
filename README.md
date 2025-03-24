@@ -1,21 +1,21 @@
 # NER for ePADD
-Dette repoet inneholder et skript som henter egennavn (named entities) fra teksten i en .mbox-fil og skriver disse til ePADD EntityList-formatet. 
-Egennavn som blir funnet vil legges til, ikke overskrive de allerede eksisterende entitetene som har blitt funnet av ePADD.
+This repo contains a script the extracts named entities from the text of an .mbox file.
 
-## Installering
-Du trenger python 3.x og pip   
-Lag gjerne et virtuelt miljø og installer avhengigheter slik:  
+## Installation
+You need python >=3.10, pip, and venv   
+Create a virtual environment and install dependencies like this:  
 ```
 python3 -m venv venv_epadd
 . venv_epadd/bin/activate
 pip install .
 ```
 
-## Kjøring
-Kjør `python3 ner_for_epadd.py --help` for forklaring av argumenter.
+## Running the script
+Run `python3 ner_for_epadd.py --help` for argument explanation.
 
-Hvis defaultargumenter ellers passer fint, kan du kjøre opp skriptet slik: 
+If the default argumentents fit, you can run the script like this: 
 ```
-python3 ner_for_epadd.py --mbox [path_til_mbox_fil] --entity_books [path_til_entitybooks]
+python3 ner_for_epadd.py --mbox [path_to_mbox_file]
 ```
 
+You can use the output file as input to [https://github.com/NationalLibraryOfNorway/epadd-nb/tree/feat/read-entities-from-json-file](https://github.com/NationalLibraryOfNorway/epadd-nb/tree/feat/read-entities-from-json-file)
