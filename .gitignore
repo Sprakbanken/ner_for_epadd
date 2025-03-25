@@ -1,7 +1,9 @@
-epost
 build
-takeout*
-venv_epadd
+
 __pycache__
 *egg-info
-epadd*
+.pdm-python
+
+data
+logs
+output

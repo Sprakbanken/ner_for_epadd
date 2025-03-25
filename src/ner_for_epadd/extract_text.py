@@ -9,15 +9,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_text_content(part: email.message.Message) -> str:
-    content = part._payload
-    headers = dict(part._headers)
+def get_text_content(message: email.message.Message) -> str:
+    content = message._payload
+    headers = dict(message._headers)
     if "Content-Type" in headers and "charset" in headers["Content-Type"]:
         bits = headers["Content-Type"].split("charset=")
         if bits[1].startswith('"'):
             charset = bits[1].split('"')[1]
         else:
             charset = re.split("\s", bits[1])[0]
+    else:
+        logger.debug("No charset in Content-Type header, interpreting as acsii")
+        content = content.encode("ascii", "surrogateescape").decode("utf-8")
+
     if "Content-Transfer-Encoding" in headers:
         match headers["Content-Transfer-Encoding"]:
             case "quoted-printable":
@@ -27,12 +31,15 @@ def get_text_content(part: email.message.Message) -> str:
             case "8bit":
                 content = content.encode(charset, "surrogateescape").decode("utf-8")
             case _:
-                print(headers)
+                logger.warning(
+                    "Unknown Content-Transfer-Encoding %s",
+                    headers["Content-Transfer-Encoding"],
+                )
     return content
 
 
 def get_text_messages(box: mbox) -> dict[str, email.message.Message]:
-    # TODO: This only works is there is no more than 1 text/plain part per message-id...
+    """Extract text messages from mbox and return a dict of message-id: message object"""
     messages = {}
     for msg in box:
         if "message-id" in msg:
@@ -55,17 +62,5 @@ def get_text_messages(box: mbox) -> dict[str, email.message.Message]:
 
 
 def get_text_contents(box: mbox) -> dict[str, str]:
+    """Extract text content from mbox and return a dict of message-id: message_text"""
     return {k: get_text_content(msg) for k, msg in get_text_messages(box).items()}
-
-
-def str_to_type(str_: str) -> str | float | bool:
-    if str_.isnumeric():
-        if "." in str_:
-            return float(str_)
-        else:
-            return int(str_)
-    if str_.lower() == "false":
-        return False
-    if str_.lower() == "true":
-        return True
-    return str_
