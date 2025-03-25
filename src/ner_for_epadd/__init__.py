@@ -8,8 +8,6 @@ from src.ner_for_epadd.extract_text import (
     get_text_messages,
 )
 from tqdm import tqdm
-import errno
-import os
 import logging
 import json
 
