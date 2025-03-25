@@ -5,7 +5,7 @@ description = "Simple .mbox parsing + NER with custom huggingface transformers m
 authors = [
     {name = "Tita", email = "tita.enstad@nb.no"},
 ]
-dependencies = ["transformers[torch]>=4.49.0", "torch>=2.6.0"]
+dependencies = ["transformers[torch]>=4.49.0", "torch>=2.6.0", "tqdm>=4.67.1"]
 requires-python = "==3.10.*"
 readme = "README.md"
 license = {text = "MIT"}
